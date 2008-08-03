@@ -11,14 +11,16 @@ ok(1, "loaded ok");
 open(OLDERR, ">&STDERR");
 open(STDERR, ">$tempfile");
 
-@ARGV = ("-X", "-p", $pidfile);
+@ARGV = ();
+$App::Daemon::background = 0;
+$App::Daemon::pidfile    = $pidfile;
 daemonize();
 
 close STDERR;
 open(STDERR, ">&OLDERR");
 close OLDERR;
 
-ok(1, "running in foreground with -X");
+ok(1, "running in foreground");
 
 open PIDFILE, "<$pidfile";
 my $pid = <PIDFILE>;
