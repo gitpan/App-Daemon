@@ -2,7 +2,7 @@ package App::Daemon;
 use strict;
 use warnings;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use Getopt::Std;
 use Pod::Usage;
@@ -134,24 +134,38 @@ sub daemonize {
     }
 
     if( $background ) {
-        if( my $child = fork() ) {
+        umask(0);
+
+          # Make sure the child isn't killed when the uses closes the
+          # terminal session before the child detaches from the tty.
+        $SIG{'HUP'} = 'IGNORE';
+
+        my $child = fork();
+
+        if($child < 0) {
+            LOGDIE "Fork failed ($!)";
+        }
+
+        if( $child ) {
             # parent doesn't do anything
-            sleep 1;
             exit 0;
         }
     
-            # child does all processing, but first needs to detach
-            # from parent;
-        user_switch();
+            # Become the session leader of a new session, become the
+            # process group leader of a new process group.
         POSIX::setsid();
-            # properly daemonize
+
+        user_switch();
+
+            # close std file descriptors
         close(STDIN);
         close(STDOUT);
         close(STDERR);
     }
 
     $SIG{__DIE__} = sub { 
-        if(! $^S) {
+          # Make sure it's not an eval{} triggering the handler.
+        if(defined $^S && $^S==0) {
             unlink $pidfile or warn "Cannot remove $pidfile";
         }
     };
@@ -323,13 +337,15 @@ App::Daemon - Start an Application as a Daemon
      # Program:
    use App::Daemon qw( daemonize );
    daemonize();
+   do_something_useful(); # your application
 
-     # Then, in the shell:
- 
-     # start app in background
+     # Then, in the shell: start application,
+     # which returns immediately, but continues 
+     # to run do_something_useful() in the background
    $ app start
+   $
 
-     # stop app
+     # stop application
    $ app stop
 
      # start app in foreground (for testing)
@@ -340,7 +356,23 @@ App::Daemon - Start an Application as a Daemon
 
 =head1 DESCRIPTION
 
-C<App::Daemon> helps running an application as a daemon. Along with the
+C<App::Daemon> helps running an application as a daemon. The idea is
+that you prepend your script with the 
+
+    use App::Daemon qw( daemonize ); 
+    daemonize();
+
+and 'daemonize' it that way. That means, that if you write
+
+    use App::Daemon qw( daemonize ); 
+
+    daemonize();
+    sleep(10);
+
+you'll get a script that, when called from the command line, returns 
+immediatly, but continues to run as a daemon for 10 seconds.
+
+Along with the
 common features offered by similar modules on CPAN, it
 
 =over 4
@@ -420,7 +452,7 @@ this instead:
     Running:     no
     Name match:  0
 
-=head2 Command line options
+=head2 Command Line Options
 
 =over 4
 
@@ -464,6 +496,27 @@ variables:
     $App::Daemon::loglevel   = $DEBUG;
 
     daemonize();
+
+=head2 Application-specific command line options
+
+If an application needs additional command line options, it can 
+use whatever is not yet taken by App::Daemon, as described previously
+in the L<Command Line Options> section.
+
+However, it needs to make sure to remove these additional options before
+calling daemonize(), or App::Daemon will complain. To do this, create 
+an options hash C<%opts> and store application-specific options in there
+while removing them from @ARGV:
+
+    my %opts = ();
+
+    for my $opt (qw(k P U)) {
+        my $v = App::Daemon::find_option( $opt, 1 );
+        $opts{ $opt } = $v if defined $v;
+    }
+
+After this, options C<-k>, C<-P>, and C<-U> will have disappeared from
+@ARGV and can be checked in C<$opts{k}>, C<$opts{P}>, and C<$opts{U}>.
 
 =head2 Gotchas
 
