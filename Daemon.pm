@@ -2,7 +2,7 @@ package App::Daemon;
 use strict;
 use warnings;
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 use Getopt::Std;
 use Pod::Usage;
@@ -215,7 +215,7 @@ sub user_switch {
         if(! defined $name) {
             LOGDIE "Cannot switch to user $as_user";
         }
-        $> = $uid;
+        POSIX::setuid( $uid );
     }
 }
     
@@ -485,6 +485,8 @@ this instead:
     Running:     no
     Name match:  0
 
+=back
+
 =head2 Command Line Options
 
 =over 4
@@ -518,6 +520,8 @@ Increase default Log4perl verbosity from $INFO to $DEBUG. Note that this
 option will be ignored if Log4perl is initialized independently or if
 a user-provided Log4perl configuration file is used.
 
+=back
+
 =head2 Setting Parameters
 
 Instead of setting paramteters like the logfile, the pidfile etc. from
@@ -550,7 +554,7 @@ while removing them from @ARGV:
 
     my %opts = ();
 
-    for my $opt (qw(k P U)) {
+    for my $opt (qw(-k -P -U)) {
         my $v = App::Daemon::find_option( $opt, 1 );
         $opts{ $opt } = $v if defined $v;
     }
@@ -596,8 +600,6 @@ This will fork a child, terminate the parent and detach the child from
 the terminal. Issued from the command line, the program above will
 continue to run the code following the detach() call but return to the
 shell prompt immediately.
-
-=back
 
 =head1 AUTHOR
 
