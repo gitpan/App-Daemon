@@ -2,11 +2,10 @@ package App::Daemon;
 use strict;
 use warnings;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 use Getopt::Std;
 use Pod::Usage;
-use Log::Log4perl qw(:easy);
 use File::Basename;
 use Proc::ProcessTable;
 use Log::Log4perl qw(:easy);
@@ -17,10 +16,20 @@ use Fcntl qw/:flock/;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(daemonize cmd_line_parse detach);
 
+use constant LSB_OK               => 0;
+use constant LSB_DEAD_PID_EXISTS  => 1;
+use constant LSB_DEAD_LOCK_EXISTS => 2;
+use constant LSB_NOT_RUNNING      => 3;
+use constant LSB_UNKNOWN          => 4;
+use constant ALREADY_RUNNING      => 150;
+
 our ($pidfile, $logfile, $l4p_conf, $as_user, $background, 
      $loglevel, $action, $appname);
 $action  = "";
 $appname = appname();
+
+our $kill_retries = 3;
+our $kill_sig = SIGTERM; # maps to 15 via POSIX.pm
 
 ###########################################
 sub cmd_line_parse {
@@ -80,6 +89,8 @@ sub cmd_line_parse {
 
     if( Log::Log4perl->initialized() ) {
         DEBUG "Log4perl already initialized, doing nothing";
+    } elsif( $action eq "status" ) {
+        Log::Log4perl->easy_init( $loglevel );
     } elsif( $l4p_conf ) {
         Log::Log4perl->init( $l4p_conf );
     } elsif( $logfile ) {
@@ -111,33 +122,53 @@ sub daemonize {
     }
     
     if($action eq "status") {
-        status();
-        exit 0;
+        exit status();
     }
 
     if($action eq "stop" or $action eq "restart") {
+        my $exit_code = LSB_NOT_RUNNING;
+
         if(-f $pidfile) {
             my $pid = pid_file_read();
             if(kill 0, $pid) {
-                kill 2, $pid;
+                kill $kill_sig, $pid;
+                my $killed = 0;
+                for (1..$kill_retries) {
+                    if(!kill 0, $pid) {
+                        INFO "Process $pid stopped successfully.";
+                        unlink $pidfile or die "Can't remove $pidfile ($!)";
+                        $exit_code = LSB_OK;
+                        $killed++;
+                        last;
+                    }
+                    INFO "Process $pid still running, waiting ...";
+                    sleep 1;
+                }
+                if(! $killed) {
+                    ERROR "Process $pid still up, out of retries, giving up.";
+                    $exit_code = LSB_DEAD_PID_EXISTS;
+                }
             } else {
                 ERROR "Process $pid not running\n";
                 unlink $pidfile or die "Can't remove $pidfile ($!)";
+                $exit_code = LSB_NOT_RUNNING;
             }
         } else {
             ERROR "According to my pidfile, there's no instance ",
                   "of me running.";
+            $exit_code = LSB_NOT_RUNNING;
         }
+
         if($action eq "restart") {
             sleep 1;
         } else {
-            INFO "Process $$ stopped by request.";
-            exit 0;
+            exit $exit_code;
         }
     }
       
     if ( my $num = pid_file_process_running() ) {
-        LOGDIE "Already running: $num (pidfile=$pidfile)\n";
+        LOGWARN "Already running: $num (pidfile=$pidfile)\n";
+        exit ALREADY_RUNNING;
     }
 
     if( $background ) {
@@ -220,20 +251,35 @@ sub user_switch {
 ###########################################
 sub status {
 ###########################################
+
+      # Define exit codes according to 
+      # http://refspecs.freestandards.org/LSB_3.1.1/LSB-Core-generic/LSB-Core-generic/iniscrptact.html
+    my $exit_code = LSB_UNKNOWN;
+
     print "Pid file:    $pidfile\n";
     if(-f $pidfile) {
         my $pid = pid_file_read();
+        my $running = process_running($pid);
         print "Pid in file: $pid\n";
-        print "Running:     ", process_running($pid) ? "yes" : "no", "\n";
+        print "Running:     ", $running ? "yes" : "no", "\n";
+        if($running) {
+              # see above
+            $exit_code = LSB_OK;
+        } else {
+              # see above
+            $exit_code = LSB_DEAD_PID_EXISTS;
+        }
     } else {
         print "No pidfile found\n";
+        $exit_code = LSB_NOT_RUNNING;
     }
     my @cmdlines = processes_running_by_name( $appname );
     print "Name match:  ", scalar @cmdlines, "\n";
     for(@cmdlines) {
         print "    ", $_, "\n";
     }
-    return 1;
+
+    return $exit_code;
 }
 
 
@@ -449,9 +495,17 @@ is run in foreground mode for testing purposes.
 
 =item stop
 
-will find the daemon's PID in the pidfile and send it a kill signal. It
-won't verify if this actually shut down the daemon or if it's immune to 
-the kill signal.
+will find the daemon's PID in the pidfile and send it a SIGTERM signal. It
+will verify $App::Daemon::kill_retries times if the process is still alive,
+with 1-second sleeps in between.
+
+To have App::Daemon send a different signal than SIGTERM (e.g., SIGINT), set
+
+    use POSIX;
+    $App::Daemon::kill_sig = SIGINT;
+
+Note that his requires the numerial value (SIGINT via POSIX.pm), not a
+string like "SIGINT".
 
 =item status
 
@@ -482,6 +536,26 @@ this instead:
     Pid in file: 14914
     Running:     no
     Name match:  0
+
+The status commands exit code complies with 
+
+    http://refspecs.freestandards.org/LSB_3.1.1/LSB-Core-generic/LSB-Core-generic/iniscrptact.html
+
+and returns
+
+    0: if the process is up and running
+    1: the process is dead but the pid file still exists
+    3: the process is not running
+
+These constants are defined within App::Daemon to help writing test
+scripts:
+
+    use constant LSB_OK               => 0;
+    use constant LSB_DEAD_PID_EXISTS  => 1;
+    use constant LSB_DEAD_LOCK_EXISTS => 2;
+    use constant LSB_NOT_RUNNING      => 3;
+    use constant LSB_UNKNOWN          => 4;
+    use constant ALREADY_RUNNING      => 150;
 
 =back
 
@@ -601,8 +675,8 @@ shell prompt immediately.
 
 =head1 AUTHOR
 
-Mike Schilli, cpan@perlmeister.com
-
+    2011, Mike Schilli <cpan@perlmeister.com>
+    
 =head1 COPYRIGHT AND LICENSE
 
 Copyright (C) 2008 by Mike Schilli
@@ -611,4 +685,11 @@ This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.5 or,
 at your option, any later version of Perl 5 you may have available.
 
-=cut
+=cut 
+
+=head1 LICENSE
+
+Copyright 2011 by Mike Schilli, all rights reserved.
+This program is free software, you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
