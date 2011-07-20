@@ -2,7 +2,7 @@ package App::Daemon;
 use strict;
 use warnings;
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 use Getopt::Std;
 use Pod::Usage;
@@ -24,9 +24,12 @@ use constant LSB_UNKNOWN          => 4;
 use constant ALREADY_RUNNING      => 150;
 
 our ($pidfile, $logfile, $l4p_conf, $as_user, $background, 
-     $loglevel, $action, $appname);
+     $loglevel, $action, $appname, $default_pid_dir, $default_log_dir);
 $action  = "";
 $appname = appname();
+
+$default_pid_dir = ".";
+$default_log_dir = ".";
 
 our $kill_retries = 3;
 our $kill_sig = SIGTERM; # maps to 15 via POSIX.pm
@@ -43,14 +46,14 @@ sub cmd_line_parse {
       $pidfile    = $_pidfile;
     }
     else {
-      $pidfile  ||= ( '/tmp/' . $appname . ".pid" );
+      $pidfile  ||= ( "$default_pid_dir/" . $appname . ".pid" );
     }
 
     if(my $_logfile = find_option('-l', 1)) {
       $logfile    = $_logfile;
     }
     else {
-      $logfile  ||= ( '/tmp/' . $appname . ".log" );
+      $logfile  ||= ( "$default_log_dir/" . $appname . ".log" );
     }
 
     if(my $_l4p_conf = find_option('-l4p', 1)) {
@@ -100,6 +103,8 @@ sub cmd_line_parse {
             log4perl.appender.FileApp = Log::Log4perl::Appender::File
             log4perl.appender.FileApp.filename = $logfile
             log4perl.appender.FileApp.owner    = $as_user
+              # this umask is only temporary
+            log4perl.appender.FileApp.umask    = 0133
             log4perl.appender.FileApp.layout   = PatternLayout
             log4perl.appender.FileApp.layout.ConversionPattern = %d %m%n
         });
@@ -190,7 +195,8 @@ sub detach {
 ###########################################
     my($as_user) = @_;
 
-    umask(0);
+      # newly created files have rw-r--r-- permissions by default
+    umask(0133);
  
       # Make sure the child isn't killed when the user closes the
       # terminal session before the child detaches from the tty.
@@ -366,7 +372,8 @@ sub pid_file_write {
 ###########################################
     my($pid) = @_;
 
-    open FILE, "+>$pidfile" or LOGDIE "Cannot open pidfile $pidfile";
+    sysopen FILE, $pidfile, O_RDWR|O_CREAT, 0644 or
+        LOGDIE "Cannot open pidfile $pidfile";
     flock FILE, LOCK_EX;
     seek(FILE, 0, 0);
     print FILE "$pid\n";
@@ -470,7 +477,7 @@ shows with the 'status' command if an instance is already running
 and which PID it has:
 
     ./my-app status
-    Pid file:    /tmp/tt.pid
+    Pid file:    ./tt.pid
     Pid in file: 14914
     Running:     no
     Name match:  0
@@ -489,9 +496,18 @@ will start up the daemon. "start" itself is optional, as this is the
 default action, 
         
         $ ./my-app
+        $
         
-will also run the 'start' action. If the -X option is given, the program
-is run in foreground mode for testing purposes.
+will also run the 'start' action. By default, it will create a pid file
+and a log file in the current directory
+(named C<my-app.pid> and C<my-app.log>. To change these locations, see
+the C<-l> and C<-p> options.
+
+If the -X option is given, the program
+is running in foreground mode for testing purposes:
+
+        $ ./my-app -X
+        ...
 
 =item stop
 
@@ -510,9 +526,9 @@ string like "SIGINT".
 =item status
 
 will print out diagnostics on what the status of the daemon is. Typically,
-the output look like this:
+the output looks like this:
 
-    Pid file:    /tmp/tt.pid
+    Pid file:    ./tt.pid
     Pid in file: 15562
     Running:     yes
     Name match:  1
@@ -532,7 +548,7 @@ C<test.pl>, it will match lines like "perl -w test.pl" or
 If the process is no longer running, the status output might look like
 this instead:
 
-    Pid file:    /tmp/tt.pid
+    Pid file:    ./tt.pid
     Pid in file: 14914
     Running:     no
     Name match:  0
@@ -570,7 +586,9 @@ Foreground mode. Log messages go to the screen.
 =item -l logfile
 
 Logfile to send Log4perl messages to in background mode. Defaults
-to C</tmp/[appname].log>.
+to C<./[appname].log>. Note that having a logfile in the current directory
+doesn't make sense except for testing environments, make sure to set this
+to somewhere within C</var/log> for production use.
 
 =item -u as_user
 
@@ -584,7 +602,11 @@ will be ignored.
 =item -p pidfile
 
 Where to save the pid of the started process.
-Defaults to C</tmp/[appname].pid>.
+Defaults to C<./[appname].pid>.
+Note that 
+having a pidfile in the current directory
+doesn't make sense except for testing environments, make sure to set this
+to somewhere within C</var/run> for production use.
 
 =item -v
 
@@ -677,16 +699,6 @@ shell prompt immediately.
 
     2011, Mike Schilli <cpan@perlmeister.com>
     
-=head1 COPYRIGHT AND LICENSE
-
-Copyright (C) 2008 by Mike Schilli
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.5 or,
-at your option, any later version of Perl 5 you may have available.
-
-=cut 
-
 =head1 LICENSE
 
 Copyright 2011 by Mike Schilli, all rights reserved.
