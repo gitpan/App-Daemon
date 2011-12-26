@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               App-Daemon
-version:            0.13
+version:            0.14
 abstract:           Start an Application as a Daemon
 author:
     - Mike Schilli <m@perlmeister.com>

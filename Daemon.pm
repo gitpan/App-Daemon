@@ -2,7 +2,7 @@ package App::Daemon;
 use strict;
 use warnings;
 
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 
 use Getopt::Std;
 use Pod::Usage;
@@ -79,14 +79,14 @@ sub cmd_line_parse {
       if(!defined $loglevel);
     $loglevel   = find_option('-v') ? $DEBUG : $loglevel;
 
-    for (qw(start stop status)) {
+    for (qw(start stop restart status)) {
         if( find_option( $_ ) ) {
             $action = $_;
             last;
         }
     }
     
-    if($action eq "stop" or $action eq "restart") {
+    if($action eq "stop" or $action eq "status") {
         $background = 0;
     }
 
@@ -697,11 +697,11 @@ shell prompt immediately.
 
 =head1 AUTHOR
 
-    2011, Mike Schilli <cpan@perlmeister.com>
+    2008, Mike Schilli <cpan@perlmeister.com>
     
 =head1 LICENSE
 
-Copyright 2011 by Mike Schilli, all rights reserved.
+Copyright 2008-2011 by Mike Schilli, all rights reserved.
 This program is free software, you can redistribute it and/or
 modify it under the same terms as Perl itself.
 
