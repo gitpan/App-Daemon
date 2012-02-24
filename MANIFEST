@@ -11,4 +11,5 @@ README
 t/001Basic.t
 t/002Params.t
 t/003CmdLine.t
-META.yml                                 Module meta-data (added by MakeMaker)
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)
