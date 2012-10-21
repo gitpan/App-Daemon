@@ -29,4 +29,4 @@ requires:
   Test::More: 0
 resources:
   repository: http://github.com/mschilli/app-daemon
-version: 0.15
+version: 0.16
