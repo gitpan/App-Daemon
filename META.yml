@@ -1,31 +1,31 @@
----
-abstract: 'Start an Application as a Daemon'
+--- #YAML:1.0
+name:               App-Daemon
+version:            0.21
+abstract:           Start an Application as a Daemon
 author:
-  - 'Mike Schilli <m@perlmeister.com>'
-build_requires:
-  ExtUtils::MakeMaker: 0
+    - Mike Schilli <m@perlmeister.com>
+license:            unknown
+distribution_type:  module
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.62, CPAN::Meta::Converter version 2.132140'
-license: unknown
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
-name: App-Daemon
-no_index:
-  directory:
-    - t
-    - inc
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-  File::Basename: 0
-  File::Pid: 0
-  File::Temp: 0
-  Getopt::Std: 0
-  Log::Log4perl: 1.0
-  Pod::Usage: 0
-  Sysadm::Install: 0.37
-  Test::More: 0
+    File::Basename:   0
+    File::Pid:        0
+    File::Temp:       0
+    Getopt::Std:      0
+    Log::Log4perl:    1.0
+    Pod::Usage:       0
+    Sysadm::Install:  0.37
+    Test::More:       0
 resources:
-  repository: http://github.com/mschilli/app-daemon
-version: 0.20
+    repository:  http://github.com/mschilli/app-daemon
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.57_05
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4
